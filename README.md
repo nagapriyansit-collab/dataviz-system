@@ -52,5 +52,5 @@ dataviz_app/
 
 Use `sample_data.csv` included in this folder — it contains employee records
 with numeric, categorical, and mixed columns — great for testing all chart types!
-[View My Project Live 🚀]( )
+[View My Project Live 🚀]( http://localhost:5000)
 

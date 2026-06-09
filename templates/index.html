@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DataViz Explorer</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+
+  <!-- Plotly -->
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.30.0/plotly.min.js"
+          onerror="this.onerror=null; this.src='https://cdn.plot.ly/plotly-2.30.0.min.js';"></script>
+  <script>
+    if (!window.Plotly) {
+      console.error('Plotly failed to load from CDN.');
+      window.PlotlyError = true;
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg:       #080c14;
+      --surface:  #0f1521;
+      --card:     #131b2e;
+      --border:   #1e2d4a;
+      --accent:   #7B61FF;
+      --accent2:  #00d4ff;
+      --accent3:  #ff6b6b;
+      --text:     #e8eaf6;
+      --muted:    #6272a4;
+      --green:    #50fa7b;
+      --yellow:   #f1fa8c;
+      --radius:   12px;
+      --glow:     0 0 24px rgba(123,97,255,.25);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Grid noise overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(123,97,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(123,97,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(8,12,20,.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.05rem; font-weight: 600;
+      color: var(--accent2);
+      letter-spacing: .05em;
+    }
+    .logo span { color: var(--accent); }
+    .nav-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .7rem; color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 2px 10px; border-radius: 20px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative; z-index: 1;
+      text-align: center;
+      padding: 5rem 2rem 3rem;
+    }
+    .hero-tag {
+      display: inline-block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .72rem; color: var(--accent2);
+      border: 1px solid rgba(0,212,255,.3);
+      padding: 4px 14px; border-radius: 20px;
+      margin-bottom: 1.2rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.8rem);
+      font-weight: 700; line-height: 1.1;
+      letter-spacing: -.02em;
+      margin-bottom: 1rem;
+    }
+    .hero h1 .hl { color: var(--accent); }
+    .hero p {
+      color: var(--muted); font-size: 1.05rem;
+      max-width: 520px; margin: 0 auto 2.5rem;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      max-width: 600px; margin: 0 auto 3rem;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .3s, box-shadow .3s, background .3s;
+      background: rgba(123,97,255,.03);
+      position: relative;
+    }
+    .upload-zone:hover,
+    .upload-zone.drag-over {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+      background: rgba(123,97,255,.07);
+    }
+    .upload-zone input[type=file] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-icon {
+      font-size: 2.8rem; margin-bottom: .8rem; display: block;
+    }
+    .upload-zone h3 {
+      font-size: 1.1rem; font-weight: 600; margin-bottom: .4rem;
+    }
+    .upload-zone p {
+      color: var(--muted); font-size: .85rem;
+    }
+    .upload-btn {
+      display: inline-block;
+      margin-top: 1rem;
+      background: var(--accent);
+      color: #fff; font-weight: 600;
+      padding: .6rem 1.6rem;
+      border-radius: 8px; font-size: .9rem;
+      pointer-events: none;
+      transition: background .2s;
+    }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      display: none; flex-direction: column; align-items: center;
+      gap: 1rem; margin: 2rem auto; max-width: 400px;
+    }
+    .spinner.active { display: flex; }
+    .spin-ring {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner p {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .8rem; color: var(--muted);
+    }
+
+    /* ── Main content ── */
+    .main { position: relative; z-index: 1; padding: 0 2rem 4rem; }
+
+    /* ── Stats row ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem; margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.2rem;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--glow); }
+    .stat-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .65rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .1em;
+      margin-bottom: .3rem;
+    }
+    .stat-value {
+      font-size: 1.6rem; font-weight: 700; color: var(--accent2);
+    }
+
+    /* ── Section headers ── */
+    .section-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .72rem; color: var(--accent);
+      text-transform: uppercase; letter-spacing: .12em;
+      margin-bottom: 1rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .section-title::after {
+      content: ''; flex: 1;
+      height: 1px; background: var(--border);
+    }
+
+    /* ── Data preview table ── */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 2.5rem;
+    }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .78rem;
+    }
+    th {
+      background: rgba(123,97,255,.12);
+      color: var(--accent); font-weight: 500;
+      padding: .7rem 1rem; text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .6rem 1rem; color: var(--text);
+      border-bottom: 1px solid rgba(30,45,74,.5);
+      white-space: nowrap; max-width: 200px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(123,97,255,.05); }
+
+    /* ── Chart builder ── */
+    .builder-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.8rem;
+      margin-bottom: 2.5rem;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .form-group label {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .68rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .08em;
+      margin-bottom: .4rem;
+    }
+    .form-group select {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: .55rem .9rem;
+      border-radius: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .85rem;
+      outline: none;
+      appearance: none;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+    .form-group select:focus { border-color: var(--accent); }
+
+    .btn {
+      padding: .65rem 1.8rem;
+      border: none; border-radius: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600; font-size: .9rem;
+      cursor: pointer; transition: all .2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #9075ff; box-shadow: var(--glow); }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      margin-left: .6rem;
+    }
+    .btn-secondary:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ── Chart output ── */
+    .chart-output {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-height: 420px;
+      margin-bottom: 2.5rem;
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chart-output .placeholder {
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .85rem; text-align: center;
+    }
+    .chart-output .placeholder span { display: block; font-size: 2.5rem; margin-bottom: .5rem; }
+
+    /* ── Auto charts grid ── */
+    .auto-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 1.5rem; margin-bottom: 2.5rem;
+    }
+    .auto-chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .auto-chart-title {
+      padding: .8rem 1.2rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .75rem; color: var(--accent2);
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,212,255,.04);
+    }
+
+    /* ── Column info pills ── */
+    .col-pills { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 2rem; }
+    .pill {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .7rem; padding: 3px 10px;
+      border-radius: 20px; border: 1px solid;
+    }
+    .pill-num  { color: var(--accent2); border-color: rgba(0,212,255,.3); background: rgba(0,212,255,.07); }
+    .pill-cat  { color: var(--yellow);  border-color: rgba(241,250,140,.3); background: rgba(241,250,140,.07); }
+    .pill-date { color: var(--green);   border-color: rgba(80,250,123,.3);  background: rgba(80,250,123,.07); }
+
+    /* ── Error toast ── */
+    .toast {
+      display: none; position: fixed; bottom: 2rem; right: 2rem;
+      background: #2d1b1b; border: 1px solid var(--accent3);
+      color: var(--accent3); padding: .9rem 1.4rem;
+      border-radius: var(--radius); z-index: 999;
+      font-family: 'IBM Plex Mono', monospace; font-size: .82rem;
+      animation: slideIn .3s ease;
+      max-width: 360px;
+    }
+    .toast.show { display: block; }
+    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      nav { padding: 0 1rem; }
+      .hero { padding: 3rem 1rem 2rem; }
+      .main { padding: 0 1rem 3rem; }
+      .auto-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Fade-in ── */
+    .fade-in { animation: fadeIn .5s ease both; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+    #dashboard { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">data<span>viz</span>.py</div>
+  <div class="nav-badge">v1.0 · fresher edition</div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-tag">🔬 CSV → Interactive Charts</div>
+  <h1>Explore Your Data<br><span class="hl">Visually</span></h1>
+  <p>Upload any CSV file and instantly get beautiful, interactive charts — no code needed.</p>
+
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept=".csv" />
+    <span class="upload-icon">📂</span>
+    <h3>Drop your CSV here</h3>
+    <p>or click to browse</p>
+    <span class="upload-btn">Choose File</span>
+  </div>
+
+  <div class="spinner" id="spinner">
+    <div class="spin-ring"></div>
+    <p>Reading your dataset…</p>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<div class="main">
+  <div id="dashboard">
+
+    <!-- Stats -->
+    <div class="section-title">📊 Dataset Overview</div>
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <!-- Column pills -->
+    <div class="section-title">🏷️ Columns</div>
+    <div class="col-pills" id="colPills"></div>
+
+    <!-- Preview -->
+    <div class="section-title">🗂️ Data Preview</div>
+    <div class="table-wrap">
+      <table id="previewTable"></table>
+    </div>
+
+    <!-- Auto charts -->
+    <div class="section-title">⚡ Auto-Generated Charts</div>
+    <div class="auto-grid" id="autoGrid"></div>
+
+    <!-- Chart Builder -->
+    <div class="section-title">🛠️ Custom Chart Builder</div>
+    <div class="builder-card">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Chart Type</label>
+          <select id="chartType">
+            <option value="histogram">Histogram</option>
+            <option value="scatter">Scatter Plot</option>
+            <option value="bar">Bar Chart</option>
+            <option value="box">Box Plot</option>
+            <option value="violin">Violin Plot</option>
+            <option value="pie">Pie Chart</option>
+            <option value="line">Line Chart</option>
+            <option value="heatmap">Correlation Heatmap</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>X Column</label>
+          <select id="xCol"></select>
+        </div>
+        <div class="form-group">
+          <label>Y Column (optional)</label>
+          <select id="yCol"><option value="">— None —</option></select>
+        </div>
+        <div class="form-group">
+          <label>Color By (optional)</label>
+          <select id="colorCol"><option value="">— None —</option></select>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="buildChart()">Generate Chart</button>
+      <button class="btn btn-secondary" onclick="clearChart()">Clear</button>
+    </div>
+
+    <div class="chart-output" id="chartOutput">
+      <div class="placeholder">
+        <span>📈</span>
+        Configure a chart above and click Generate
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Error toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  let currentFile = null;
+  let colTypes = {};
+
+  // Drag & drop
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) handleUpload(f);
+  });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) handleUpload(e.target.files[0]);
+  });
+
+  async function handleUpload(file) {
+    if (!file.name.endsWith('.csv')) { showToast('⚠ Please upload a CSV file.'); return; }
+    document.getElementById('spinner').classList.add('active');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) { showToast('❌ ' + data.error); return; }
+      currentFile = data.filename;
+      colTypes = data.col_types;
+      renderDashboard(data);
+      loadAutoCharts();
+    } catch (e) {
+      showToast('❌ Upload failed: ' + e.message);
+    } finally {
+      document.getElementById('spinner').classList.remove('active');
+    }
+  }
+
+  function renderDashboard(data) {
+    const s = data.stats;
+    // Stats
+    const statCards = [
+      { label: 'Rows', value: s.rows.toLocaleString(), icon: '📋' },
+      { label: 'Columns', value: s.cols, icon: '🏛' },
+      { label: 'Missing', value: s.missing_pct + '%', icon: '🕳' },
+      { label: 'Duplicates', value: s.duplicates, icon: '♊' },
+      { label: 'Numeric', value: s.num_numeric, icon: '🔢' },
+      { label: 'Categorical', value: s.num_categorical, icon: '🏷' },
+    ];
+    document.getElementById('statsGrid').innerHTML = statCards.map(c =>
+      `<div class="stat-card fade-in">
+        <div class="stat-label">${c.icon} ${c.label}</div>
+        <div class="stat-value">${c.value}</div>
+      </div>`
+    ).join('');
+
+    // Pills
+    const pills = [
+      ...colTypes.numeric.map(c => `<span class="pill pill-num">🔢 ${c}</span>`),
+      ...colTypes.categorical.map(c => `<span class="pill pill-cat">🏷 ${c}</span>`),
+      ...colTypes.datetime.map(c => `<span class="pill pill-date">📅 ${c}</span>`),
+    ];
+    document.getElementById('colPills').innerHTML = pills.join('');
+
+    // Preview table
+    const headers = data.headers;
+    const rows = data.preview;
+    let html = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+    rows.forEach(r => {
+      html += '<tr>' + headers.map(h => `<td title="${r[h]}">${r[h] ?? ''}</td>`).join('') + '</tr>';
+    });
+    html += '</tbody>';
+    document.getElementById('previewTable').innerHTML = html;
+
+    // Selects
+    populateSelects(headers);
+
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('dashboard').classList.add('fade-in');
+    document.querySelector('.hero').style.paddingBottom = '1.5rem';
+  }
+
+  function populateSelects(cols) {
+    const xSel = document.getElementById('xCol');
+    const ySel = document.getElementById('yCol');
+    const cSel = document.getElementById('colorCol');
+    xSel.innerHTML = cols.map(c => `<option value="${c}">${c}</option>`).join('');
+    ySel.innerHTML = '<option value="">— None —</option>' + cols.map(c => `<option value="${c}">${c}</option>`).join('');
+    cSel.innerHTML = '<option value="">— None —</option>' + cols.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+
+  async function loadAutoCharts() {
+    const res = await fetch('/auto_charts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: currentFile }),
+    });
+    const data = await res.json();
+    if (!data.success) return;
+    const grid = document.getElementById('autoGrid');
+    grid.innerHTML = '';
+    data.charts.forEach((c, i) => {
+      const card = document.createElement('div');
+      card.className = 'auto-chart-card fade-in';
+      card.style.animationDelay = (i * 0.1) + 's';
+      card.innerHTML = `<div class="auto-chart-title">${c.title}</div><div id="auto_${i}" style="min-height:340px;"></div>`;
+      grid.appendChild(card);
+      const fig = JSON.parse(c.plot);
+      if (window.Plotly) {
+        Plotly.newPlot('auto_' + i, fig.data, fig.layout, { responsive: true, displayModeBar: false });
+      } else {
+        showToast('❌ Plotly library did not load; charts cannot render.');
+      }
+    });
+  }
+
+  async function buildChart() {
+    const payload = {
+      filename: currentFile,
+      chart_type: document.getElementById('chartType').value,
+      x_col: document.getElementById('xCol').value,
+      y_col: document.getElementById('yCol').value || null,
+      color_col: document.getElementById('colorCol').value || null,
+    };
+    const out = document.getElementById('chartOutput');
+    out.innerHTML = '<div class="placeholder"><span>⏳</span>Generating…</div>';
+    try {
+      const res = await fetch('/visualize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.error) { showToast('❌ ' + data.error); out.innerHTML = '<div class="placeholder"><span>⚠️</span>' + data.error + '</div>'; return; }
+      out.innerHTML = '<div id="customChart" style="width:100%;min-height:420px;"></div>';
+      const fig = JSON.parse(data.plot);
+      if (window.Plotly) {
+        Plotly.newPlot('customChart', fig.data, fig.layout, { responsive: true });
+      } else {
+        showToast('❌ Plotly library did not load; chart cannot render.');
+      }
+    } catch (e) {
+      showToast('❌ ' + e.message);
+    }
+  }
+
+  function clearChart() {
+    document.getElementById('chartOutput').innerHTML =
+      '<div class="placeholder"><span>📈</span>Configure a chart above and click Generate</div>';
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 4000);
+  }
+</script>
+</body>
+</html>
